@@ -1,0 +1,8 @@
+atlas-ftag-tools
+h5py
+pandas
+numpy
+matplotlib
+mplhep
+seaborn
+hist
