@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import mplhep as hep
-import seaborn as sns
 import hist
 from hist import Hist
 
@@ -12,13 +11,16 @@ from ftag.hdf5 import H5Reader
 
 # settings in script (hard-coded for the moment)
 fname = "/nfs/dust/atlas/user/pgadow/plit/data/ntuples/user.pgadow.LD_2023_11_28.601589.PhPy8EG_A14_ttbar_hdamp258p75_nonallhadron.e8547_s3797_r13144_p5934_TREE/*.h5"
-
+fname = "/nfs/dust/atlas/user/pgadow/plit/data/ntuples/user.pgadow.LD_2023_11_28.601589.PhPy8EG_A14_ttbar_hdamp258p75_nonallhadron.e8547_s3797_r13144_p5934_TREE/user.pgadow.35693775._000477.output.h5"
 
 # you can inspect the content of h5 files with
 # > h5ls -v /nfs/dust/atlas/user/pgadow/plit/data/ntuples/user.pgadow.LD_2023_11_28.601589.PhPy8EG_A14_ttbar_hdamp258p75_nonallhadron.e8547_s3797_r13144_p5934_TREE/user.pgadow.35693775._000477.output.h5
 
-vars_muon = ["pt_track", "eta_track", "phi_track", "ptvarcone30TTVARel", "topoetcone30Rel", "ptfrac_track", "ptrel_track", "dRtrackjet_track", "nTracksTrackjet"]
-plotconfigs_muon = {
+vars_lepton = ["pt_track", "eta_track", "phi_track", "topoetcone30Rel", "ptfrac_track", "ptrel_track", "dRtrackjet_track", "nTracksTrackjet"]
+vars_muon = vars_lepton + ["ptvarcone30TTVARel", "caloClusterERel", "muonType"]
+vars_electron = vars_lepton + ["ptvarcone30Rel", "caloClusterSumEtRel", "hasTrack"]
+
+plotconfigs_lepton = {
     "pt_track": {
         "bins": [60, 0, 200_000],
         "logy": True
@@ -31,6 +33,10 @@ plotconfigs_muon = {
         "bins": [60, -3.2, 3.2],
         "logy": False
     },
+    "ptvarcone30Rel": {
+        "bins": [60, 0, 1.5],
+        "logy": True
+    },
     "ptvarcone30TTVARel": {
         "bins": [60, 0, 1.5],
         "logy": True
@@ -38,6 +44,22 @@ plotconfigs_muon = {
     "topoetcone30Rel": {
         "bins": [60, 0, 2.0],
         "logy": True
+    },
+    "caloClusterERel": {
+        "bins": [60, 0, 3.0],
+        "logy": True
+    },
+    "caloClusterSumEtRel": {
+        "bins": [60, 0, 3.0],
+        "logy": True
+    },
+    "muonType": {
+        "bins": [6, -0.5, 5.5],
+        "logy": False
+    },
+    "hasTrack": {
+        "bins": [3, -0.5, 2.5],
+        "logy": False
     },
     "ptfrac_track": {
         "bins": [60, 0, 3.0],
@@ -52,7 +74,7 @@ plotconfigs_muon = {
         "logy": True
     },
     "nTracksTrackjet": {
-        "bins": [15, 0, 15],
+        "bins": [15, -0.5, 14.5],
         "logy": False
     },
 }
@@ -103,15 +125,30 @@ def plot(df, var, plotconfig, obj):
     import logging
     logging.getLogger('matplotlib').setLevel(logging.ERROR)
 
+    
     if obj == 'muons':
         df_prompt = df[(df["iffClass"] == 4)]
         df_nonprompt = df[(df["iffClass"] != 4)]
         text_prompt = 'Prompt muons'
         text_nonprompt = 'Non-prompt muons'
+    # there was the need to update labels due to moving to a newer analysis release due to
+    # https://gitlab.cern.ch/atlas/athena/-/commit/f2833421bece919d44cbe6527e278fdf6ab6a21f
     elif obj == 'muon_tracks':
+        df_prompt = df[(df["ftagTruthTypeLabel"] == 6) | (df["ftagTruthTypeLabel"] == -6)]
+        df_nonprompt = df[~(df["ftagTruthTypeLabel"] == 6) | (df["ftagTruthTypeLabel"] == -6)]
+        text_prompt = 'Muon tracks'
+        text_nonprompt = 'Other tracks'
+    elif obj == 'electrons':
+        df_prompt = df[(df["iffClass"] == 2)]
+        df_nonprompt = df[(df["iffClass"] != 2)]
+        text_prompt = 'Prompt electrons'
+        text_nonprompt = 'Non-prompt electrons'
+    # there was the need to update labels due to moving to a newer analysis release due to
+    # https://gitlab.cern.ch/atlas/athena/-/commit/f2833421bece919d44cbe6527e278fdf6ab6a21f
+    elif obj == 'electron_tracks':
         df_prompt = df[(df["ftagTruthTypeLabel"] == 5) | (df["ftagTruthTypeLabel"] == -5)]
         df_nonprompt = df[~(df["ftagTruthTypeLabel"] == 5) | (df["ftagTruthTypeLabel"] == -5)]
-        text_prompt = 'Muon tracks'
+        text_prompt = 'Electron tracks'
         text_nonprompt = 'Other tracks'
 
     bin_settings = plotconfig['bins']
@@ -128,27 +165,53 @@ def plot(df, var, plotconfig, obj):
     hep.atlas.label(loc=4, label="Internal", ax=ax)
     plt.legend(loc="best")
     f.savefig(f'plot_{obj}_{var}.png') 
+    plt.close(f)
 
 def main():
-    reader = H5Reader(fname, batch_size=100_000, jets_name="muons")
-    data = reader.load({"muons": None, "muon_tracks": None}, num_jets=1_000_000)
-    print(len(data["muons"]))
+    do_muons = True
+    do_electrons = True
 
-    leptons = data["muons"]
-    df_leptons = pd.DataFrame(leptons)
+    if do_muons:
+        reader_muons = H5Reader(fname, batch_size=100_000, jets_name="muons")
+        data_muons = reader_muons.load({"muons": None, "muon_tracks": None}, num_jets=1_000_000)
+        print(len(data_muons["muons"]))
 
-    tracks = data["muon_tracks"]
-    tracks = tracks.flatten()
-    tracks = tracks[np.where(tracks["valid"])]
-    df_tracks = pd.DataFrame(tracks)
+        muons = data_muons["muons"]
+        df_muons = pd.DataFrame(muons)
 
-    # plot muon variables
-    for var in vars_muon:
-        plot(df_leptons, var, plotconfigs_muon[var], 'muons')
+        tracks_muons = data_muons["muon_tracks"]
+        tracks_muons = tracks_muons.flatten()
+        tracks_muons = tracks_muons[np.where(tracks_muons["valid"])]
+        df_tracks_muons = pd.DataFrame(tracks_muons)
 
-    # plot track variables
-    for var in vars_track:
-        plot(df_tracks, var, plotconfigs_track[var], 'muon_tracks')
+        # plot muon variables
+        for var in vars_muon:
+            plot(df_muons, var, plotconfigs_lepton[var], 'muons')
+
+        # plot muon track variables
+        for var in vars_track:
+            plot(df_tracks_muons, var, plotconfigs_track[var], 'muon_tracks')
+
+    if do_electrons:
+        reader_electrons = H5Reader(fname, batch_size=100_000, jets_name="electrons")
+        data_electrons = reader_electrons.load({"electrons": None, "electron_tracks": None}, num_jets=1_000_000)
+        print(len(data_electrons["electrons"]))
+
+        electrons = data_electrons["electrons"]
+        df_electrons = pd.DataFrame(electrons)
+
+        tracks_electrons = data_electrons["electron_tracks"]
+        tracks_electrons = tracks_electrons.flatten()
+        tracks_electrons = tracks_electrons[np.where(tracks_electrons["valid"])]
+        df_tracks_electrons = pd.DataFrame(tracks_electrons)
+
+        # plot electron variables
+        for var in vars_electron:
+            plot(df_electrons, var, plotconfigs_lepton[var], 'electrons')
+
+        # plot electron track variables
+        for var in vars_track:
+            plot(df_tracks_electrons, var, plotconfigs_track[var], 'electron_tracks')
 
 if __name__ == "__main__":
     main()
