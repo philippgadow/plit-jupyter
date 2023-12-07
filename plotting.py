@@ -16,11 +16,23 @@ fname = "/nfs/dust/atlas/user/pgadow/plit/data/ntuples/user.pgadow.LD_2023_11_28
 # you can inspect the content of h5 files with
 # > h5ls -v /nfs/dust/atlas/user/pgadow/plit/data/ntuples/user.pgadow.LD_2023_11_28.601589.PhPy8EG_A14_ttbar_hdamp258p75_nonallhadron.e8547_s3797_r13144_p5934_TREE/user.pgadow.35693775._000477.output.h5
 
-vars_lepton = ["pt_track", "eta_track", "phi_track", "topoetcone30Rel", "ptfrac_track", "ptrel_track", "dRtrackjet_track", "nTracksTrackjet"]
-vars_muon = vars_lepton + ["ptvarcone30TTVARel", "caloClusterERel", "muonType"]
-vars_electron = vars_lepton + ["ptvarcone30Rel", "caloClusterSumEtRel", "hasTrack"]
+vars_lepton = ["topoetcone30Rel", "nTracksTrackjet"]
+vars_muon = vars_lepton + ["pt_track", "eta_track", "phi_track", "ptfrac_track", "ptrel_track", "dRtrackjet_track", "ptvarcone30TTVARel", "caloClusterERel", "muonType"]
+vars_electron = vars_lepton + ["pt", "eta", "phi", "ptfrac_lepton", "ptrel_lepton", "dRtrackjet_lepton", "ptvarcone30Rel", "caloClusterSumEtRel", "hasTrack"]
 
 plotconfigs_lepton = {
+    "pt": {
+        "bins": [60, 0, 200_000],
+        "logy": True
+    },
+    "eta": {
+        "bins": [60, -2.5, 2.5],
+        "logy": False
+    },
+    "phi": {
+        "bins": [60, -3.2, 3.2],
+        "logy": False
+    },
     "pt_track": {
         "bins": [60, 0, 200_000],
         "logy": True
@@ -73,8 +85,20 @@ plotconfigs_lepton = {
         "bins": [60, 0, 0.4],
         "logy": True
     },
+    "ptfrac_lepton": {
+        "bins": [60, 0, 3.0],
+        "logy": False
+    },
+    "ptrel_lepton": {
+        "bins": [60, 0, 10_000],
+        "logy": True
+    },
+    "dRtrackjet_lepton": {
+        "bins": [60, 0, 0.4],
+        "logy": True
+    },
     "nTracksTrackjet": {
-        "bins": [15, -0.5, 14.5],
+        "bins": [14, -0.5, 14.5],
         "logy": False
     },
 }
@@ -169,7 +193,7 @@ def plot(df, var, plotconfig, obj):
 
 def main():
     do_muons = True
-    do_electrons = True
+    do_electrons = False
 
     if do_muons:
         reader_muons = H5Reader(fname, batch_size=100_000, jets_name="muons")
@@ -181,9 +205,15 @@ def main():
 
         tracks_muons = data_muons["muon_tracks"]
         tracks_muons = tracks_muons.flatten()
+        import numpy.lib.recfunctions as rfn
+        iffClass_repeated = df_muons["iffClass"].apply(lambda x: np.repeat(x, 40)).to_numpy().flatten()
+        iffClass_repeated = iffClass_repeated.astype(tracks_muons.dtype)
+        tracks_muons = rfn.append_fields(tracks_muons, 'iffClass', iffClass_repeated)
         tracks_muons = tracks_muons[np.where(tracks_muons["valid"])]
         df_tracks_muons = pd.DataFrame(tracks_muons)
 
+        print(df_tracks_muons)
+        return
         # plot muon variables
         for var in vars_muon:
             plot(df_muons, var, plotconfigs_lepton[var], 'muons')
